@@ -1639,6 +1639,7 @@ function Styles() {
         padding: 12px 14px;
         text-align: left;
         cursor: pointer;
+        color: var(--ink);
         box-shadow: var(--shadow-sm);
         transition: box-shadow 0.15s ease, transform 0.15s ease;
       }
@@ -1813,6 +1814,7 @@ function Styles() {
         width: 100%;
         text-align: left;
         cursor: pointer;
+        color: var(--ink);
         box-shadow: var(--shadow-sm);
       }
       .test-row-main { flex: 1; }
@@ -1860,6 +1862,7 @@ function Styles() {
         padding: 13px;
         text-align: left;
         cursor: pointer;
+        color: var(--ink);
         box-shadow: var(--shadow-sm);
       }
       .test-pick-name { font-weight: 600; font-size: 14.5px; margin-bottom: 4px; }
