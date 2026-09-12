@@ -271,6 +271,7 @@ function fmtDate(iso) {
   });
 }
 
+
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -1253,26 +1254,30 @@ function ReportView({ patient, results, scope }) {
             <tr>
               <th>Categoria</th>
               <th>Teste</th>
-              <th>Último valor</th>
-              <th>Data</th>
-              <th>Classificação</th>
+              <th>Avaliação 1</th>
+              <th>Avaliação 2</th>
+              <th>Avaliação 3</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(TESTS).map(([id, t]) => {
-              const last = latestByTest[id];
-              return (
-                <tr key={id}>
-                  <td>{CATEGORIES[t.category].label}</td>
-                  <td>{t.name}</td>
-                  <td>{last ? `${last.value} ${t.unit}` : "—"}</td>
-                  <td>{last ? fmtDate(last.date) : "—"}</td>
-                  <td>{last ? last.label : "—"}</td>
-                </tr>
-              );
-            })}
+            {Object.entries(TESTS).map(([id, t]) => (
+              <tr key={id}>
+                <td>{CATEGORIES[t.category].label}</td>
+                <td>{t.name}</td>
+                <td className="report-blank-cell"></td>
+                <td className="report-blank-cell"></td>
+                <td className="report-blank-cell"></td>
+              </tr>
+            ))}
           </tbody>
         </table>
+      )}
+
+      {!isSingleTest && (
+        <div className="report-block">
+          <h3>Observações</h3>
+          <div className="report-notes-box"></div>
+        </div>
       )}
 
       {testIds.map((id) => {
@@ -1365,6 +1370,7 @@ export default function App() {
     setExportScope({ mode: "test", testId });
     setTimeout(() => window.print(), 60);
   };
+
 
   const openPatient = async (id) => {
     if (!resultsByPatient[id]) {
@@ -1698,7 +1704,8 @@ function Styles() {
         color: var(--ink-faint);
         margin-bottom: 5px;
       }
-      .form-row input {
+      .form-row input,
+      .form-row textarea {
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 9px;
@@ -1708,6 +1715,10 @@ function Styles() {
         background: var(--paper);
         color: var(--ink);
         box-sizing: border-box;
+      }
+      .form-row textarea {
+        resize: vertical;
+        line-height: 1.5;
       }
       .form-row-split {
         display: grid;
@@ -2188,6 +2199,14 @@ function Styles() {
         font-size: 14.5px;
         font-weight: 600;
         margin: 0 0 8px;
+      }
+      .report-blank-cell {
+        height: 30px;
+      }
+      .report-notes-box {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        min-height: 110px;
       }
       .report-footer {
         font-size: 11px;
