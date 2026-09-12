@@ -1703,18 +1703,25 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    const reset = () => setExportScope(null);
+    const reset = () => {
+      setExportScope(null);
+      setNav((prev) =>
+        prev.screen === "reportEdit"
+          ? { screen: "patientDetail", patientId: prev.patientId }
+          : prev
+      );
+    };
     window.addEventListener("afterprint", reset);
     return () => window.removeEventListener("afterprint", reset);
   }, []);
 
   const exportFullReport = () => {
     setExportScope({ mode: "full" });
-    setTimeout(() => window.print(), 60);
+    setTimeout(() => window.print(), 150);
   };
   const exportTestReport = (testId) => {
     setExportScope({ mode: "test", testId });
-    setTimeout(() => window.print(), 60);
+    setTimeout(() => window.print(), 150);
   };
 
   const saveReportData = async (patientId, values, dates, notesText) => {
@@ -1826,7 +1833,6 @@ export default function App() {
             onGenerate={(values, dates, notesText) => {
               saveReportData(patient.id, values, dates, notesText);
               exportFullReport();
-              setNav({ screen: "patientDetail", patientId: patient.id });
             }}
           />
         )}
