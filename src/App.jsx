@@ -316,6 +316,12 @@ function fmtDate(iso) {
   });
 }
 
+function fmtISODate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -1465,6 +1471,7 @@ function ReportEditScreen({ patient, onBack, onGenerate }) {
     });
     return v;
   });
+  const [dates, setDates] = useState(patient.reportDates || ["", "", ""]);
   const [notesText, setNotesText] = useState(patient.notes || "");
 
   const setCell = (testId, colIdx, val) => {
@@ -1472,6 +1479,14 @@ function ReportEditScreen({ patient, onBack, onGenerate }) {
       const row = [...prev[testId]];
       row[colIdx] = val;
       return { ...prev, [testId]: row };
+    });
+  };
+
+  const setDateCol = (colIdx, val) => {
+    setDates((prev) => {
+      const next = [...prev];
+      next[colIdx] = val;
+      return next;
     });
   };
 
@@ -1485,9 +1500,17 @@ function ReportEditScreen({ patient, onBack, onGenerate }) {
           <tr>
             <th>Categoria</th>
             <th>Teste</th>
-            <th>Avaliação 1</th>
-            <th>Avaliação 2</th>
-            <th>Avaliação 3</th>
+            {[0, 1, 2].map((i) => (
+              <th key={i}>
+                Avaliação {i + 1}
+                <input
+                  type="date"
+                  className="report-date-input"
+                  value={dates[i]}
+                  onChange={(e) => setDateCol(i, e.target.value)}
+                />
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -1522,7 +1545,7 @@ function ReportEditScreen({ patient, onBack, onGenerate }) {
         </div>
       </div>
 
-      <button className="btn-primary btn-block" onClick={() => onGenerate(values, notesText)}>
+      <button className="btn-primary btn-block" onClick={() => onGenerate(values, dates, notesText)}>
         <Printer size={18} /> Gerar e imprimir relatório
       </button>
     </div>
@@ -1566,9 +1589,13 @@ function ReportView({ patient, results, scope }) {
             <tr>
               <th>Categoria</th>
               <th>Teste</th>
-              <th>Avaliação 1</th>
-              <th>Avaliação 2</th>
-              <th>Avaliação 3</th>
+              {[0, 1, 2].map((i) => (
+                <th key={i}>
+                  {patient.reportDates && patient.reportDates[i]
+                    ? fmtISODate(patient.reportDates[i])
+                    : `Avaliação ${i + 1}`}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -1690,10 +1717,10 @@ export default function App() {
     setTimeout(() => window.print(), 60);
   };
 
-  const saveReportData = async (patientId, values, notesText) => {
+  const saveReportData = async (patientId, values, dates, notesText) => {
     const target = patients.find((p) => p.id === patientId);
     if (!target) return;
-    const updated = { ...target, reportValues: values, notes: notesText };
+    const updated = { ...target, reportValues: values, reportDates: dates, notes: notesText };
     setPatients((prev) => prev.map((p) => (p.id === patientId ? updated : p)));
     await savePatientDoc(user.uid, updated);
   };
@@ -1796,8 +1823,8 @@ export default function App() {
           <ReportEditScreen
             patient={patient}
             onBack={() => setNav({ screen: "patientDetail", patientId: patient.id })}
-            onGenerate={(values, notesText) => {
-              saveReportData(patient.id, values, notesText);
+            onGenerate={(values, dates, notesText) => {
+              saveReportData(patient.id, values, dates, notesText);
               exportFullReport();
               setNav({ screen: "patientDetail", patientId: patient.id });
             }}
@@ -2635,6 +2662,20 @@ function Styles() {
         border-bottom: 1.5px solid var(--ink);
         padding: 6px 8px;
         font-weight: 600;
+      }
+      .report-date-input {
+        display: block;
+        margin-top: 4px;
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px 5px;
+        font-size: 11.5px;
+        font-family: inherit;
+        font-weight: 400;
+        background: var(--paper);
+        color: var(--ink);
+        box-sizing: border-box;
       }
       .report-table td {
         border-bottom: 1px solid var(--line);
