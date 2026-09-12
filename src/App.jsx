@@ -103,6 +103,14 @@ const MINI_BEST_ITEMS = [
   "Subir e descer um degrau",
 ];
 
+const SARCF_ITEMS = [
+  "Força: dificuldade para levantar e carregar objetos de cerca de 4,5 kg (0 = nenhuma, 1 = alguma, 2 = muita ou incapaz)",
+  "Deambulação: dificuldade para atravessar um cômodo (0 = nenhuma, 1 = alguma, 2 = muita, usa apoio ou incapaz)",
+  "Levantar: dificuldade para se levantar de uma cadeira ou cama (0 = nenhuma, 1 = alguma, 2 = muita ou incapaz sem ajuda)",
+  "Escadas: dificuldade para subir um lance de 10 degraus (0 = nenhuma, 1 = alguma, 2 = muita ou incapaz)",
+  "Quedas: número de quedas no último ano (0 = nenhuma, 1 = 1 a 3 quedas, 2 = 4 ou mais quedas)",
+];
+
 function fmtCountdown(sec) {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
@@ -199,6 +207,43 @@ const TESTS = {
       return { label: "Força preservada", tone: "good" };
     },
   },
+  strength_sarcf: {
+    category: "strength",
+    name: "SARC-CalF (rastreio de sarcopenia)",
+    unit: "pontos",
+    input: "checklist",
+    items: SARCF_ITEMS,
+    showCalfReference: true,
+    protocol:
+      "Questionário SARC-F combinado com a circunferência da panturrilha (SARC-CalF), para maior sensibilidade no rastreio de sarcopenia. Para cada item, pontue conforme os critérios descritos (0, 1 ou 2), somando 0 a 10 pontos no SARC-F. Se a circunferência da panturrilha estiver abaixo do ponto de corte (< 34 cm em homens, < 33 cm em mulheres), são somados +10 pontos automaticamente. Pontuação combinada ≥ 11 indica rastreio positivo.",
+    classify: (total, patient) => {
+      const calf =
+        patient.health && patient.health.calf ? parseFloat(patient.health.calf) : null;
+      if (calf) {
+        const cutoff = patient.sex === "M" ? 34 : 33;
+        const belowCutoff = calf < cutoff;
+        const combined = total + (belowCutoff ? 10 : 0);
+        if (combined >= 11)
+          return {
+            label: `SARC-CalF: ${combined} pts — rastreio positivo, investigar sarcopenia`,
+            tone: "high",
+          };
+        return {
+          label: `SARC-CalF: ${combined} pts — rastreio negativo (baixo risco)`,
+          tone: "good",
+        };
+      }
+      if (total >= 4)
+        return {
+          label: "SARC-F: rastreio positivo (panturrilha não registrada)",
+          tone: "high",
+        };
+      return {
+        label: "SARC-F: rastreio negativo (panturrilha não registrada)",
+        tone: "good",
+      };
+    },
+  },
   mobility_tug: {
     category: "mobility",
     name: "Timed Up and Go",
@@ -274,6 +319,39 @@ function fmtDate(iso) {
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+const EMPTY_HEALTH = {
+  weight: "",
+  height: "",
+  bpSystolic: "",
+  bpDiastolic: "",
+  heartRate: "",
+  glucose: "",
+  spo2: "",
+  calf: "",
+  gripLeft1: "",
+  gripLeft2: "",
+  gripRight1: "",
+  gripRight2: "",
+};
+
+function avgPair(a, b) {
+  const na = parseFloat(a);
+  const nb = parseFloat(b);
+  if (isNaN(na) && isNaN(nb)) return null;
+  if (isNaN(na)) return nb.toFixed(1);
+  if (isNaN(nb)) return na.toFixed(1);
+  return ((na + nb) / 2).toFixed(1);
+}
+
+function calcImc(weight, height) {
+  const w = parseFloat(weight);
+  const hCm = parseFloat(height);
+  if (!w || !hCm) return null;
+  const hM = hCm / 100;
+  if (hM <= 0) return null;
+  return (w / (hM * hM)).toFixed(1);
 }
 
 /* ---------------------------------------------------------------
@@ -390,6 +468,121 @@ function useStopwatch() {
   return { elapsed, running, start, stop, reset };
 }
 
+function HealthFields({ health, onChange }) {
+  const set = (key) => (e) => onChange({ [key]: e.target.value });
+  const imc = calcImc(health.weight, health.height);
+  const avgLeft = avgPair(health.gripLeft1, health.gripLeft2);
+  const avgRight = avgPair(health.gripRight1, health.gripRight2);
+
+  return (
+    <>
+      <div className="form-section-title">Dados de saúde (opcional)</div>
+
+      <div className="form-row form-row-split">
+        <div>
+          <label>Peso (kg)</label>
+          <input type="number" inputMode="decimal" value={health.weight} onChange={set("weight")} placeholder="Ex: 68" />
+        </div>
+        <div>
+          <label>Altura (cm)</label>
+          <input type="number" inputMode="decimal" value={health.height} onChange={set("height")} placeholder="Ex: 160" />
+        </div>
+      </div>
+      {imc && (
+        <div className="imc-display">
+          IMC calculado: <strong>{imc}</strong> kg/m²
+        </div>
+      )}
+
+      <div className="form-row form-row-split3">
+        <div>
+          <label>PA sistólica</label>
+          <input type="number" inputMode="decimal" value={health.bpSystolic} onChange={set("bpSystolic")} placeholder="120" />
+        </div>
+        <div>
+          <label>PA diastólica</label>
+          <input type="number" inputMode="decimal" value={health.bpDiastolic} onChange={set("bpDiastolic")} placeholder="80" />
+        </div>
+        <div>
+          <label>BPM</label>
+          <input type="number" inputMode="decimal" value={health.heartRate} onChange={set("heartRate")} placeholder="72" />
+        </div>
+      </div>
+
+      <div className="form-row form-row-split">
+        <div>
+          <label>Glicemia (mg/dL)</label>
+          <input type="number" inputMode="decimal" value={health.glucose} onChange={set("glucose")} placeholder="Ex: 95" />
+        </div>
+        <div>
+          <label>SpO2 (%)</label>
+          <input type="number" inputMode="decimal" value={health.spo2} onChange={set("spo2")} placeholder="Ex: 97" />
+        </div>
+      </div>
+
+      <div className="form-row">
+        <label>Circunferência da panturrilha (cm)</label>
+        <input type="number" inputMode="decimal" value={health.calf} onChange={set("calf")} placeholder="Ex: 33" />
+      </div>
+
+      <div className="form-row">
+        <label>Força de preensão manual (kg)</label>
+        <div className="grip-grid">
+          <div className="grip-col">
+            <div className="grip-col-label">Esquerda</div>
+            <input type="number" inputMode="decimal" placeholder="Rep. 1" value={health.gripLeft1} onChange={set("gripLeft1")} />
+            <input type="number" inputMode="decimal" placeholder="Rep. 2" value={health.gripLeft2} onChange={set("gripLeft2")} />
+            {avgLeft && <div className="grip-avg">Média: {avgLeft} kg</div>}
+          </div>
+          <div className="grip-col">
+            <div className="grip-col-label">Direita</div>
+            <input type="number" inputMode="decimal" placeholder="Rep. 1" value={health.gripRight1} onChange={set("gripRight1")} />
+            <input type="number" inputMode="decimal" placeholder="Rep. 2" value={health.gripRight2} onChange={set("gripRight2")} />
+            {avgRight && <div className="grip-avg">Média: {avgRight} kg</div>}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function HealthSummary({ health }) {
+  if (!health) return null;
+  const rows = [
+    ["Peso", health.weight ? `${health.weight} kg` : null],
+    ["Altura", health.height ? `${health.height} cm` : null],
+    ["IMC", health.imc ? `${health.imc} kg/m²` : null],
+    [
+      "Pressão arterial",
+      health.bpSystolic || health.bpDiastolic
+        ? `${health.bpSystolic || "—"}/${health.bpDiastolic || "—"} mmHg`
+        : null,
+    ],
+    ["Frequência cardíaca", health.heartRate ? `${health.heartRate} bpm` : null],
+    ["Glicemia", health.glucose ? `${health.glucose} mg/dL` : null],
+    ["SpO2", health.spo2 ? `${health.spo2}%` : null],
+    ["Circunf. panturrilha", health.calf ? `${health.calf} cm` : null],
+  ].filter(([, v]) => v);
+
+  const gripLeftAvg = avgPair(health.gripLeft1, health.gripLeft2);
+  const gripRightAvg = avgPair(health.gripRight1, health.gripRight2);
+  if (gripLeftAvg) rows.push(["Preensão esquerda (média)", `${gripLeftAvg} kg`]);
+  if (gripRightAvg) rows.push(["Preensão direita (média)", `${gripRightAvg} kg`]);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="health-summary">
+      {rows.map(([label, value]) => (
+        <div key={label} className="health-summary-row">
+          <span className="health-summary-label">{label}</span>
+          <span className="health-summary-value">{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------
    Screens
 ---------------------------------------------------------------- */
@@ -472,13 +665,23 @@ function PatientsScreen({ patients, onOpen, onAdd, onLogout }) {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [sex, setSex] = useState("F");
+  const [health, setHealth] = useState(EMPTY_HEALTH);
+  const updateHealth = (patch) => setHealth((prev) => ({ ...prev, ...patch }));
 
   const submit = () => {
     if (!name.trim() || !age) return;
-    onAdd({ id: uid(), name: name.trim(), age: parseInt(age, 10), sex });
+    const imc = calcImc(health.weight, health.height);
+    onAdd({
+      id: uid(),
+      name: name.trim(),
+      age: parseInt(age, 10),
+      sex,
+      health: { ...health, imc },
+    });
     setName("");
     setAge("");
     setSex("F");
+    setHealth(EMPTY_HEALTH);
     setShowForm(false);
   };
 
@@ -550,6 +753,9 @@ function PatientsScreen({ patients, onOpen, onAdd, onLogout }) {
               </div>
             </div>
           </div>
+
+          <HealthFields health={health} onChange={updateHealth} />
+
           <div className="form-actions">
             <button className="btn-ghost" onClick={() => setShowForm(false)}>
               Cancelar
@@ -595,6 +801,8 @@ function PatientDetailScreen({ patient, results, onBack, onNewTest, onHistory, o
       <p className="subtitle">
         {patient.age} anos · {patient.sex === "M" ? "Masculino" : "Feminino"}
       </p>
+
+      <HealthSummary health={patient.health} />
 
       {Object.entries(CATEGORIES).map(([catKey, cat]) => {
         const testsInCat = Object.entries(TESTS).filter(([, t]) => t.category === catKey);
@@ -644,11 +852,14 @@ function PatientEditScreen({ patient, onBack, onSave, onDelete }) {
   const [name, setName] = useState(patient.name);
   const [age, setAge] = useState(String(patient.age));
   const [sex, setSex] = useState(patient.sex);
+  const [health, setHealth] = useState(patient.health || EMPTY_HEALTH);
+  const updateHealth = (patch) => setHealth((prev) => ({ ...prev, ...patch }));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const submit = () => {
     if (!name.trim() || !age) return;
-    onSave({ ...patient, name: name.trim(), age: parseInt(age, 10), sex });
+    const imc = calcImc(health.weight, health.height);
+    onSave({ ...patient, name: name.trim(), age: parseInt(age, 10), sex, health: { ...health, imc } });
   };
 
   return (
@@ -682,6 +893,9 @@ function PatientEditScreen({ patient, onBack, onSave, onDelete }) {
             </div>
           </div>
         </div>
+
+        <HealthFields health={health} onChange={updateHealth} />
+
         <div className="form-actions">
           <button className="btn-ghost" onClick={onBack}>
             Cancelar
@@ -1101,6 +1315,31 @@ function TestRunScreen({ testId, patient, onBack, onSave }) {
 
         {test.input === "checklist" && (
           <div className="checklist">
+            {test.showCalfReference && (
+              <div className="calf-reference">
+                {patient.health && patient.health.calf ? (
+                  (() => {
+                    const calfVal = parseFloat(patient.health.calf);
+                    const cutoff = patient.sex === "M" ? 34 : 33;
+                    const below = calfVal < cutoff;
+                    return (
+                      <>
+                        Circunferência da panturrilha: <strong>{patient.health.calf} cm</strong>
+                        {" — "}
+                        {below
+                          ? `abaixo do ponto de corte (${cutoff} cm), +10 pontos no SARC-CalF`
+                          : `dentro do esperado (ponto de corte: ${cutoff} cm), sem pontos extras`}
+                      </>
+                    );
+                  })()
+                ) : (
+                  <>
+                    Circunferência da panturrilha <strong>não registrada</strong> — será usado
+                    apenas o SARC-F, sem a pontuação combinada do SARC-CalF.
+                  </>
+                )}
+              </div>
+            )}
             {test.items.map((label, idx) => (
               <div key={idx} className="checklist-item">
                 <span className="checklist-item-label">{label}</span>
@@ -1217,6 +1456,79 @@ function HistoryScreen({ testId, patient, results, onBack, onExportPdf, onStartT
   );
 }
 
+function ReportEditScreen({ patient, onBack, onGenerate }) {
+  const savedValues = patient.reportValues || {};
+  const [values, setValues] = useState(() => {
+    const v = {};
+    Object.keys(TESTS).forEach((id) => {
+      v[id] = savedValues[id] ? [...savedValues[id]] : ["", "", ""];
+    });
+    return v;
+  });
+  const [notesText, setNotesText] = useState(patient.notes || "");
+
+  const setCell = (testId, colIdx, val) => {
+    setValues((prev) => {
+      const row = [...prev[testId]];
+      row[colIdx] = val;
+      return { ...prev, [testId]: row };
+    });
+  };
+
+  return (
+    <div className="screen">
+      <TopBar title="Relatório" onBack={onBack} />
+      <p className="subtitle">Preencha os valores das 3 avaliações</p>
+
+      <table className="report-table">
+        <thead>
+          <tr>
+            <th>Categoria</th>
+            <th>Teste</th>
+            <th>Avaliação 1</th>
+            <th>Avaliação 2</th>
+            <th>Avaliação 3</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(TESTS).map(([id, t]) => (
+            <tr key={id}>
+              <td>{CATEGORIES[t.category].label}</td>
+              <td>{t.name}</td>
+              {[0, 1, 2].map((i) => (
+                <td key={i}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={values[id][i]}
+                    onChange={(e) => setCell(id, i, e.target.value)}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="form-card" style={{ marginTop: 16 }}>
+        <div className="form-row">
+          <label>Observações</label>
+          <textarea
+            rows={4}
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            placeholder="Escreva observações sobre o acompanhamento do paciente..."
+          />
+        </div>
+      </div>
+
+      <button className="btn-primary btn-block" onClick={() => onGenerate(values, notesText)}>
+        <Printer size={18} /> Gerar e imprimir relatório
+      </button>
+    </div>
+  );
+}
+
 function ReportView({ patient, results, scope }) {
   if (!patient) return null;
   const generatedAt = new Date().toLocaleString("pt-BR");
@@ -1260,15 +1572,18 @@ function ReportView({ patient, results, scope }) {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(TESTS).map(([id, t]) => (
-              <tr key={id}>
-                <td>{CATEGORIES[t.category].label}</td>
-                <td>{t.name}</td>
-                <td className="report-blank-cell"></td>
-                <td className="report-blank-cell"></td>
-                <td className="report-blank-cell"></td>
-              </tr>
-            ))}
+            {Object.entries(TESTS).map(([id, t]) => {
+              const vals = (patient.reportValues && patient.reportValues[id]) || ["", "", ""];
+              return (
+                <tr key={id}>
+                  <td>{CATEGORIES[t.category].label}</td>
+                  <td>{t.name}</td>
+                  <td className="report-blank-cell">{vals[0]}</td>
+                  <td className="report-blank-cell">{vals[1]}</td>
+                  <td className="report-blank-cell">{vals[2]}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -1276,7 +1591,11 @@ function ReportView({ patient, results, scope }) {
       {!isSingleTest && (
         <div className="report-block">
           <h3>Observações</h3>
-          <div className="report-notes-box"></div>
+          {patient.notes && patient.notes.trim() !== "" ? (
+            <p className="report-notes">{patient.notes}</p>
+          ) : (
+            <div className="report-notes-box"></div>
+          )}
         </div>
       )}
 
@@ -1371,6 +1690,15 @@ export default function App() {
     setTimeout(() => window.print(), 60);
   };
 
+  const saveReportData = async (patientId, values, notesText) => {
+    const target = patients.find((p) => p.id === patientId);
+    if (!target) return;
+    const updated = { ...target, reportValues: values, notes: notesText };
+    setPatients((prev) => prev.map((p) => (p.id === patientId ? updated : p)));
+    await savePatientDoc(user.uid, updated);
+  };
+
+
 
   const openPatient = async (id) => {
     if (!resultsByPatient[id]) {
@@ -1459,8 +1787,20 @@ export default function App() {
             onBack={() => setNav({ screen: "patients" })}
             onNewTest={() => setNav({ screen: "testSelect", patientId: patient.id })}
             onHistory={(testId) => setNav({ screen: "history", patientId: patient.id, testId })}
-            onExportPdf={exportFullReport}
+            onExportPdf={() => setNav({ screen: "reportEdit", patientId: patient.id })}
             onEdit={() => setNav({ screen: "patientEdit", patientId: patient.id })}
+          />
+        )}
+
+        {nav.screen === "reportEdit" && patient && (
+          <ReportEditScreen
+            patient={patient}
+            onBack={() => setNav({ screen: "patientDetail", patientId: patient.id })}
+            onGenerate={(values, notesText) => {
+              saveReportData(patient.id, values, notesText);
+              exportFullReport();
+              setNav({ screen: "patientDetail", patientId: patient.id });
+            }}
           />
         )}
 
@@ -1535,6 +1875,11 @@ function Styles() {
         --line: #333333;
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.35);
         --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.4);
+      }
+
+      html, body {
+        background: var(--paper);
+        margin: 0;
       }
 
       .app-frame {
@@ -1725,6 +2070,98 @@ function Styles() {
         grid-template-columns: 1fr 1.4fr;
         gap: 10px;
       }
+      .form-row-split3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .form-row-split3 label {
+        display: block;
+        font-size: 12.5px;
+        color: var(--ink-faint);
+        margin-bottom: 5px;
+      }
+      .form-row-split3 input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 10px 8px;
+        font-size: 14px;
+        font-family: inherit;
+        background: var(--paper);
+        color: var(--ink);
+        box-sizing: border-box;
+      }
+      .form-section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink-faint);
+        margin: 18px 0 12px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+      .imc-display {
+        font-size: 13.5px;
+        color: var(--ink);
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 9px 11px;
+        margin: -4px 0 12px;
+      }
+      .imc-display strong { color: var(--accent); }
+      .grip-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .grip-col {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .grip-col-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink-faint);
+      }
+      .grip-col input {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 9px;
+        font-size: 13.5px;
+        font-family: inherit;
+        background: var(--paper);
+        color: var(--ink);
+        box-sizing: border-box;
+        width: 100%;
+      }
+      .grip-avg {
+        font-size: 12px;
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .health-summary {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 13px;
+        margin-bottom: 16px;
+        box-shadow: var(--shadow-sm);
+      }
+      .health-summary-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 12.5px;
+        padding: 4px 0;
+      }
+      .health-summary-row:not(:last-child) {
+        border-bottom: 1px solid var(--line);
+      }
+      .health-summary-label { color: var(--ink-faint); }
+      .health-summary-value { font-weight: 600; }
       .segmented {
         display: flex;
         border: 1px solid var(--line);
@@ -1995,6 +2432,16 @@ function Styles() {
         gap: 9px;
         width: 100%;
       }
+      .calf-reference {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--ochre);
+        border-radius: 10px;
+        padding: 10px 13px;
+        font-size: 13px;
+        color: var(--ink-faint);
+      }
+      .calf-reference strong { color: var(--ink); }
       .checklist-item {
         display: flex;
         align-items: center;
@@ -2192,6 +2639,24 @@ function Styles() {
       .report-table td {
         border-bottom: 1px solid var(--line);
         padding: 6px 8px;
+      }
+      .report-table td input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 5px 6px;
+        font-size: 12.5px;
+        font-family: inherit;
+        background: var(--paper);
+        color: var(--ink);
+        box-sizing: border-box;
+      }
+      .report-notes {
+        font-size: 13px;
+        line-height: 1.6;
+        color: #1F1E1A;
+        white-space: pre-wrap;
+        margin: 0;
       }
       .report-block { margin-bottom: 18px; }
       .report-block h3 {
