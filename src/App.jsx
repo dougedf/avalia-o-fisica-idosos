@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Calendar,
   ChevronRight,
+  ChevronLeft,
   X,
   Check,
   Activity,
@@ -19,6 +20,9 @@ import {
   Pencil,
   Trash2,
   LogOut,
+  Settings,
+  Folder,
+  Apple,
 } from "lucide-react";
 import {
   LineChart,
@@ -41,6 +45,7 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   setDoc,
   deleteDoc,
 } from "firebase/firestore";
@@ -55,6 +60,7 @@ const CATEGORIES = {
   balance: { label: "Equilíbrio", color: "var(--teal)", icon: Activity },
   strength: { label: "Força", color: "var(--ochre)", icon: Dumbbell },
   mobility: { label: "Mobilidade", color: "var(--slate)", icon: Footprints },
+  nutrition: { label: "Nutrição", color: "var(--sage)", icon: Apple },
 };
 
 const CHAIR_STAND_TABLE = {
@@ -86,29 +92,66 @@ function chairStandBand(age, sex) {
   return { min: row[2], max: row[3] };
 }
 
-const MINI_BEST_ITEMS = [
-  "Levantar da cadeira sem usar os braços",
-  "Ficar na ponta dos pés",
-  "Equilíbrio em apoio unipodal",
-  "Reação a um empurrão para frente (passo de proteção)",
-  "Reação a um empurrão para trás (passo de proteção)",
-  "Reação a um empurrão lateral (passo de proteção)",
-  "Pés juntos, olhos fechados, sobre superfície macia",
-  "Em pé sobre superfície inclinada, olhos fechados",
-  "Alternar a velocidade da marcha ao comando",
-  "Caminhar virando a cabeça para os lados",
-  "Caminhar e girar o corpo (pivô) ao comando",
-  "Passar por cima de um obstáculo durante a marcha",
-  "Caminhar realizando uma tarefa mental simultânea",
-  "Subir e descer um degrau",
-];
-
 const SARCF_ITEMS = [
   "Força: dificuldade para levantar e carregar objetos de cerca de 4,5 kg (0 = nenhuma, 1 = alguma, 2 = muita ou incapaz)",
   "Deambulação: dificuldade para atravessar um cômodo (0 = nenhuma, 1 = alguma, 2 = muita, usa apoio ou incapaz)",
   "Levantar: dificuldade para se levantar de uma cadeira ou cama (0 = nenhuma, 1 = alguma, 2 = muita ou incapaz sem ajuda)",
   "Escadas: dificuldade para subir um lance de 10 degraus (0 = nenhuma, 1 = alguma, 2 = muita ou incapaz)",
   "Quedas: número de quedas no último ano (0 = nenhuma, 1 = 1 a 3 quedas, 2 = 4 ou mais quedas)",
+];
+
+const MNA_SF_ITEMS = [
+  {
+    label:
+      "A. Nos últimos 3 meses, houve diminuição da ingestão alimentar por perda de apetite, problemas digestivos, ou dificuldade para mastigar ou engolir?",
+    options: [
+      { score: 0, label: "Diminuição grave da ingestão" },
+      { score: 1, label: "Diminuição moderada da ingestão" },
+      { score: 2, label: "Sem diminuição da ingestão" },
+    ],
+  },
+  {
+    label: "B. Perda de peso nos últimos 3 meses?",
+    options: [
+      { score: 0, label: "Perda de peso maior que 3 kg" },
+      { score: 1, label: "Não sabe informar" },
+      { score: 2, label: "Perda de peso entre 1 e 3 kg" },
+      { score: 3, label: "Sem perda de peso" },
+    ],
+  },
+  {
+    label: "C. Mobilidade",
+    options: [
+      { score: 0, label: "Restrito ao leito ou à cadeira de rodas" },
+      { score: 1, label: "Deambula, mas não sai de casa" },
+      { score: 2, label: "Sai de casa normalmente" },
+    ],
+  },
+  {
+    label: "D. Passou por algum estresse psicológico ou doença aguda nos últimos 3 meses?",
+    options: [
+      { score: 0, label: "Sim" },
+      { score: 2, label: "Não" },
+    ],
+  },
+  {
+    label: "E. Problemas neuropsicológicos",
+    options: [
+      { score: 0, label: "Demência ou depressão grave" },
+      { score: 1, label: "Demência leve" },
+      { score: 2, label: "Sem problemas psicológicos" },
+    ],
+  },
+  {
+    label: "F. Índice de Massa Corporal (IMC)",
+    showImcReference: true,
+    options: [
+      { score: 0, label: "IMC menor que 19" },
+      { score: 1, label: "IMC entre 19 e menos de 21" },
+      { score: 2, label: "IMC entre 21 e menos de 23" },
+      { score: 3, label: "IMC 23 ou mais" },
+    ],
+  },
 ];
 
 function fmtCountdown(sec) {
@@ -144,24 +187,6 @@ const TESTS = {
       if (v < 15) return { label: "Risco elevado de queda", tone: "high" };
       if (v <= 25) return { label: "Risco moderado", tone: "mid" };
       return { label: "Risco baixo", tone: "good" };
-    },
-  },
-  balance_minibest: {
-    category: "balance",
-    name: "Mini-BESTest (adaptado)",
-    unit: "pontos",
-    input: "checklist",
-    items: MINI_BEST_ITEMS,
-    protocol:
-      "Versão simplificada de uma escala de equilíbrio dinâmico e reativo, para registro rápido de evolução. Para cada item, pontue 0 (incapaz ou grande comprometimento), 1 (realiza com compensação ou apoio) ou 2 (realiza normalmente). Use o protocolo completo da escala original para pontuação formal e critérios detalhados de cada item.",
-    classify: (total) => {
-      const max = MINI_BEST_ITEMS.length * 2;
-      const pct = total / max;
-      if (pct < 0.5)
-        return { label: "Equilíbrio dinâmico comprometido", tone: "high" };
-      if (pct < 0.75)
-        return { label: "Equilíbrio dinâmico limítrofe", tone: "mid" };
-      return { label: "Equilíbrio dinâmico preservado", tone: "good" };
     },
   },
   strength_chair_stand: {
@@ -242,6 +267,22 @@ const TESTS = {
         label: "SARC-F: rastreio negativo (panturrilha não registrada)",
         tone: "good",
       };
+    },
+  },
+  nutrition_mnasf: {
+    category: "nutrition",
+    name: "MNA-SF (Mini Avaliação Nutricional)",
+    unit: "pontos",
+    input: "mnasf",
+    items: MNA_SF_ITEMS,
+    protocol:
+      "Ferramenta validada de rastreio nutricional para idosos. Responda os 6 itens (A a F). No item F, use o IMC já cadastrado no perfil do paciente como referência. Pontuação total de 0 a 14: 12–14 estado nutricional normal, 8–11 risco de desnutrição, 0–7 desnutrido.",
+    classify: (total) => {
+      if (total >= 12)
+        return { label: "Estado nutricional normal", tone: "good" };
+      if (total >= 8)
+        return { label: "Risco de desnutrição", tone: "mid" };
+      return { label: "Desnutrido", tone: "high" };
     },
   },
   mobility_tug: {
@@ -327,6 +368,30 @@ function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
+const DEFAULT_UBS_LIST = [
+  "UBS 1", "UBS 2", "UBS 3", "UBS 4", "UBS 5",
+  "UBS 6", "UBS 7", "UBS 8", "UBS 9", "UBS 10",
+];
+
+function getUbsName(ubsList, ubsId) {
+  if (!ubsId) return "";
+  const idx = parseInt(ubsId.replace("ubs", ""), 10) - 1;
+  return (ubsList && ubsList[idx]) || ubsId;
+}
+
+function calcAgeFromBirthDate(birthDateIso) {
+  if (!birthDateIso) return null;
+  const [y, m, d] = birthDateIso.split("-").map(Number);
+  const birth = new Date(y, m - 1, d);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age >= 0 ? age : null;
+}
+
 const EMPTY_HEALTH = {
   weight: "",
   height: "",
@@ -363,6 +428,23 @@ function calcImc(weight, height) {
 /* ---------------------------------------------------------------
    Firestore helpers (data is scoped under users/{uid}/...)
 ---------------------------------------------------------------- */
+
+async function loadUbsList(uid) {
+  try {
+    const snap = await getDoc(doc(db, "users", uid, "settings", "ubs"));
+    if (snap.exists() && Array.isArray(snap.data().names) && snap.data().names.length === 10) {
+      return snap.data().names;
+    }
+    return DEFAULT_UBS_LIST;
+  } catch {
+    return DEFAULT_UBS_LIST;
+  }
+}
+async function saveUbsList(uid, names) {
+  try {
+    await setDoc(doc(db, "users", uid, "settings", "ubs"), { names });
+  } catch {}
+}
 
 async function loadPatients(uid) {
   try {
@@ -405,6 +487,25 @@ async function saveResultDoc(uid, patientId, result) {
   } catch {}
 }
 
+async function loadAulas(uid) {
+  try {
+    const snap = await getDocs(collection(db, "users", uid, "aulas"));
+    return snap.docs.map((d) => d.data());
+  } catch {
+    return [];
+  }
+}
+async function saveAulaDoc(uid, aula) {
+  try {
+    await setDoc(doc(db, "users", uid, "aulas", aula.id), aula);
+  } catch {}
+}
+async function deleteAulaDoc(uid, aulaId) {
+  try {
+    await deleteDoc(doc(db, "users", uid, "aulas", aulaId));
+  } catch {}
+}
+
 /* ---------------------------------------------------------------
    Small building blocks
 ---------------------------------------------------------------- */
@@ -418,7 +519,7 @@ function TopBar({ title, onBack, right }) {
             <ArrowLeft size={20} />
           </button>
         ) : (
-          <div className="brand-mark">D</div>
+          <div className="brand-mark">E</div>
         )}
         <h1>{title}</h1>
       </div>
@@ -625,8 +726,8 @@ function LoginScreen() {
   };
 
   return (
-    <div className="screen">
-      <TopBar title="Douglas Valeriano (Personal Sênior)" />
+    <div className="screen screen-bg-login">
+      <TopBar title="Acompanhamento de unidades e pacientes (Emulti)" />
       <p className="subtitle">Avaliação física para idosos</p>
 
       <div className="form-card" style={{ marginTop: 10 }}>
@@ -666,13 +767,81 @@ function LoginScreen() {
   );
 }
 
-function PatientsScreen({ patients, onOpen, onAdd, onLogout }) {
+function UBSFoldersScreen({ patients, ubsList, onOpenUbs, onSettings, onLogout }) {
+  const noUbsCount = patients.filter((p) => !p.ubsId).length;
+
+  return (
+    <div className="screen screen-with-nav screen-bg-folders">
+      <TopBar
+        title="Acompanhamento de unidades e pacientes (Emulti)"
+        right={
+          <div className="topbar-actions">
+            <button className="icon-btn" onClick={onSettings} aria-label="Gerenciar UBS" title="Gerenciar UBS">
+              <Settings size={18} />
+            </button>
+            <button className="icon-btn" onClick={onLogout} aria-label="Sair" title="Sair da conta">
+              <LogOut size={18} />
+            </button>
+          </div>
+        }
+      />
+      <p className="subtitle">Selecione uma UBS para ver os pacientes</p>
+
+      <div className="list">
+        {ubsList.map((ubsName, idx) => {
+          const id = `ubs${idx + 1}`;
+          const count = patients.filter((p) => p.ubsId === id).length;
+          return (
+            <button key={id} className="ubs-folder-row" onClick={() => onOpenUbs(id, ubsName)}>
+              <div className="ubs-folder-icon">
+                <Folder size={20} />
+              </div>
+              <div className="ubs-folder-info">
+                <div className="ubs-folder-name">{ubsName}</div>
+                <div className="ubs-folder-count">
+                  {count} paciente{count !== 1 ? "s" : ""}
+                </div>
+              </div>
+              <ChevronRight size={18} color="var(--ink-faint)" />
+            </button>
+          );
+        })}
+
+        {noUbsCount > 0 && (
+          <button className="ubs-folder-row" onClick={() => onOpenUbs(null, "Sem UBS")}>
+            <div className="ubs-folder-icon">
+              <Folder size={20} />
+            </div>
+            <div className="ubs-folder-info">
+              <div className="ubs-folder-name">Sem UBS</div>
+              <div className="ubs-folder-count">
+                {noUbsCount} paciente{noUbsCount !== 1 ? "s" : ""}
+              </div>
+            </div>
+            <ChevronRight size={18} color="var(--ink-faint)" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PatientsInUbsScreen({ patients, ubsId, ubsName, onOpen, onAdd, onBack }) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [susNumber, setSusNumber] = useState("");
   const [sex, setSex] = useState("F");
   const [health, setHealth] = useState(EMPTY_HEALTH);
   const updateHealth = (patch) => setHealth((prev) => ({ ...prev, ...patch }));
+
+  const handleBirthDateChange = (val) => {
+    setBirthDate(val);
+    const computed = calcAgeFromBirthDate(val);
+    if (computed !== null) setAge(String(computed));
+  };
 
   const submit = () => {
     if (!name.trim() || !age) return;
@@ -681,37 +850,43 @@ function PatientsScreen({ patients, onOpen, onAdd, onLogout }) {
       id: uid(),
       name: name.trim(),
       age: parseInt(age, 10),
+      birthDate: birthDate || null,
+      cpf: cpf.trim() || null,
+      susNumber: susNumber.trim() || null,
       sex,
+      ubsId: ubsId,
       health: { ...health, imc },
     });
     setName("");
     setAge("");
+    setBirthDate("");
+    setCpf("");
+    setSusNumber("");
     setSex("F");
     setHealth(EMPTY_HEALTH);
     setShowForm(false);
   };
 
+  const filteredPatients = ubsId
+    ? patients.filter((p) => p.ubsId === ubsId)
+    : patients.filter((p) => !p.ubsId);
+
   return (
     <div className="screen">
-      <TopBar
-        title="Douglas Valeriano (Personal Sênior)"
-        right={
-          <button className="icon-btn" onClick={onLogout} aria-label="Sair" title="Sair da conta">
-            <LogOut size={18} />
-          </button>
-        }
-      />
-      <p className="subtitle">Avaliação física para idosos</p>
+      <TopBar title={ubsName} onBack={onBack} />
+      <p className="subtitle">
+        {filteredPatients.length} paciente{filteredPatients.length !== 1 ? "s" : ""}
+      </p>
 
       <div className="list">
-        {patients.length === 0 && !showForm && (
+        {filteredPatients.length === 0 && !showForm && (
           <div className="empty">
             <User size={28} strokeWidth={1.5} />
-            <p>Nenhum paciente cadastrado ainda.</p>
+            <p>Nenhum paciente cadastrado nesta UBS ainda.</p>
             <p className="empty-sub">Adicione o primeiro para começar uma avaliação.</p>
           </div>
         )}
-        {patients.map((p) => (
+        {filteredPatients.map((p) => (
           <button key={p.id} className="patient-row" onClick={() => onOpen(p.id)}>
             <div className="patient-avatar">{p.name.charAt(0).toUpperCase()}</div>
             <div className="patient-info">
@@ -731,7 +906,16 @@ function PatientsScreen({ patients, onOpen, onAdd, onLogout }) {
             <label>Nome</label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome completo" />
           </div>
+
           <div className="form-row form-row-split">
+            <div>
+              <label>Data de nascimento</label>
+              <input
+                type="date"
+                value={birthDate}
+                onChange={(e) => handleBirthDateChange(e.target.value)}
+              />
+            </div>
             <div>
               <label>Idade</label>
               <input
@@ -741,22 +925,43 @@ function PatientsScreen({ patients, onOpen, onAdd, onLogout }) {
                 placeholder="Ex: 72"
               />
             </div>
+          </div>
+
+          <div className="form-row">
+            <label>Sexo</label>
+            <div className="segmented">
+              <button
+                className={sex === "F" ? "seg active" : "seg"}
+                onClick={() => setSex("F")}
+              >
+                Feminino
+              </button>
+              <button
+                className={sex === "M" ? "seg active" : "seg"}
+                onClick={() => setSex("M")}
+              >
+                Masculino
+              </button>
+            </div>
+          </div>
+
+          <div className="form-row form-row-split">
             <div>
-              <label>Sexo</label>
-              <div className="segmented">
-                <button
-                  className={sex === "F" ? "seg active" : "seg"}
-                  onClick={() => setSex("F")}
-                >
-                  Feminino
-                </button>
-                <button
-                  className={sex === "M" ? "seg active" : "seg"}
-                  onClick={() => setSex("M")}
-                >
-                  Masculino
-                </button>
-              </div>
+              <label>CPF</label>
+              <input
+                value={cpf}
+                onChange={(e) => setCpf(e.target.value)}
+                placeholder="000.000.000-00"
+              />
+            </div>
+            <div>
+              <label>Cartão SUS</label>
+              <input
+                inputMode="numeric"
+                value={susNumber}
+                onChange={(e) => setSusNumber(e.target.value)}
+                placeholder="Número do cartão"
+              />
             </div>
           </div>
 
@@ -780,7 +985,16 @@ function PatientsScreen({ patients, onOpen, onAdd, onLogout }) {
   );
 }
 
-function PatientDetailScreen({ patient, results, onBack, onNewTest, onHistory, onExportPdf, onEdit }) {
+function PatientDetailScreen({ patient, results, onBack, onNewTest, onHistory, onExportPdf, onEdit, onSaveNotes }) {
+  const [notesText, setNotesText] = useState(patient.notes || "");
+  const [notesSaved, setNotesSaved] = useState(false);
+
+  const handleSaveNotes = () => {
+    onSaveNotes(notesText);
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 1800);
+  };
+
   const latestByTest = {};
   results.forEach((r) => {
     if (!latestByTest[r.testId] || r.date > latestByTest[r.testId].date) {
@@ -807,6 +1021,16 @@ function PatientDetailScreen({ patient, results, onBack, onNewTest, onHistory, o
       <p className="subtitle">
         {patient.age} anos · {patient.sex === "M" ? "Masculino" : "Feminino"}
       </p>
+
+      {(patient.birthDate || patient.cpf || patient.susNumber) && (
+        <div className="patient-ids">
+          {patient.birthDate && (
+            <span>Nasc.: {fmtISODate(patient.birthDate)}</span>
+          )}
+          {patient.cpf && <span>CPF: {patient.cpf}</span>}
+          {patient.susNumber && <span>SUS: {patient.susNumber}</span>}
+        </div>
+      )}
 
       <HealthSummary health={patient.health} />
 
@@ -847,6 +1071,23 @@ function PatientDetailScreen({ patient, results, onBack, onNewTest, onHistory, o
         );
       })}
 
+      <div className="form-card patient-notes-card">
+        <div className="form-row">
+          <label>Observações</label>
+          <textarea
+            rows={4}
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            placeholder="Escreva suas observações sobre este paciente..."
+          />
+        </div>
+        <div className="form-actions">
+          <button className="btn-primary" onClick={handleSaveNotes}>
+            <Check size={16} /> {notesSaved ? "Salvo!" : "Salvar observações"}
+          </button>
+        </div>
+      </div>
+
       <button className="fab" onClick={onNewTest}>
         <Plus size={20} /> Nova avaliação
       </button>
@@ -854,18 +1095,353 @@ function PatientDetailScreen({ patient, results, onBack, onNewTest, onHistory, o
   );
 }
 
-function PatientEditScreen({ patient, onBack, onSave, onDelete }) {
+function BottomNav({ active, onNavigate }) {
+  return (
+    <div className="bottom-nav">
+      <button
+        className={active === "patients" ? "bottom-nav-item active" : "bottom-nav-item"}
+        onClick={() => onNavigate("patients")}
+      >
+        <User size={20} />
+        <span>Pacientes</span>
+      </button>
+      <button
+        className={active === "calendar" ? "bottom-nav-item active" : "bottom-nav-item"}
+        onClick={() => onNavigate("calendar")}
+      >
+        <Calendar size={20} />
+        <span>Aulas</span>
+      </button>
+    </div>
+  );
+}
+
+const WEEKDAY_LABELS = ["D", "S", "T", "Q", "Q", "S", "S"];
+
+function CalendarScreen({ aulas, onSelectDay }) {
+  const [viewDate, setViewDate] = useState(() => new Date());
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  const firstDay = new Date(year, month, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const aulaDatesSet = new Set(aulas.map((a) => a.date));
+  const monthLabel = viewDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const isoFor = (d) =>
+    `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <div className="screen screen-with-nav">
+      <TopBar title="Aulas" />
+      <p className="subtitle">Toque numa data para ver ou cadastrar uma aula</p>
+
+      <div className="calendar-nav">
+        <button
+          className="icon-btn"
+          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          aria-label="Mês anterior"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <div className="calendar-month-label">{monthLabel}</div>
+        <button
+          className="icon-btn"
+          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          aria-label="Próximo mês"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      <div className="calendar-grid calendar-weekdays">
+        {WEEKDAY_LABELS.map((w, i) => (
+          <div key={i} className="calendar-weekday">
+            {w}
+          </div>
+        ))}
+      </div>
+      <div className="calendar-grid">
+        {cells.map((d, i) => {
+          if (d === null) return <div key={i} className="calendar-cell empty" />;
+          const iso = isoFor(d);
+          const hasAula = aulaDatesSet.has(iso);
+          const isToday = iso === todayStr;
+          return (
+            <button
+              key={i}
+              className={`calendar-cell${isToday ? " today" : ""}`}
+              onClick={() => onSelectDay(iso)}
+            >
+              {d}
+              {hasAula && <span className="calendar-dot" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DayScreen({ dateIso, aulas, ubsList, onBack, onNewAula, onOpenAula }) {
+  const dayAulas = aulas.filter((a) => a.date === dateIso);
+  const label = new Date(dateIso + "T00:00:00").toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <div className="screen">
+      <TopBar title="Aulas do dia" onBack={onBack} />
+      <p className="subtitle">{label}</p>
+
+      <div className="list">
+        {dayAulas.length === 0 && (
+          <div className="empty">
+            <Calendar size={28} strokeWidth={1.5} />
+            <p>Nenhuma aula registrada nesse dia.</p>
+          </div>
+        )}
+        {dayAulas.map((a) => (
+          <button key={a.id} className="aula-row" onClick={() => onOpenAula(a.id)}>
+            <div className="aula-row-main">
+              <div className="aula-row-title">{a.title || "Aula"}</div>
+              <div className="aula-row-meta">
+                {a.time ? `${a.time} · ` : ""}
+                {a.ubsId ? `${getUbsName(ubsList, a.ubsId)} · ` : ""}
+                {a.participantIds.length} participante{a.participantIds.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+            <ChevronRight size={18} color="var(--ink-faint)" />
+          </button>
+        ))}
+      </div>
+
+      <button className="fab" onClick={onNewAula}>
+        <Plus size={20} /> Nova aula
+      </button>
+    </div>
+  );
+}
+
+function AulaFormScreen({ aula, dateIso, patients, ubsList, onBack, onSave, onDelete }) {
+  const [title, setTitle] = useState(aula ? aula.title : "");
+  const [time, setTime] = useState(aula ? aula.time || "" : "");
+  const [ubsId, setUbsId] = useState(aula ? aula.ubsId || "" : "");
+  const [participantIds, setParticipantIds] = useState(aula ? aula.participantIds : []);
+  const [search, setSearch] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const label = new Date(dateIso + "T00:00:00").toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  const toggleParticipant = (id) => {
+    setParticipantIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const filteredPatients = patients.filter((p) =>
+    p.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const submit = () => {
+    if (!title.trim()) return;
+    onSave({
+      id: aula ? aula.id : uid(),
+      date: dateIso,
+      title: title.trim(),
+      time,
+      ubsId: ubsId || null,
+      participantIds,
+    });
+  };
+
+  return (
+    <div className="screen">
+      <TopBar title={aula ? "Editar aula" : "Nova aula"} onBack={onBack} />
+      <p className="subtitle">{label}</p>
+
+      <div className="form-card">
+        <div className="form-row">
+          <label>Título da aula</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Ex: Equilíbrio - Turma A"
+          />
+        </div>
+        <div className="form-row form-row-split">
+          <div>
+            <label>Horário</label>
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </div>
+          <div>
+            <label>UBS</label>
+            <select value={ubsId} onChange={(e) => setUbsId(e.target.value)}>
+              <option value="">—</option>
+              {ubsList.map((name, idx) => (
+                <option key={idx} value={`ubs${idx + 1}`}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-section-title">Participantes ({participantIds.length})</div>
+      <input
+        className="participant-search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Buscar paciente..."
+      />
+      <div className="list" style={{ marginTop: 10 }}>
+        {filteredPatients.length === 0 && (
+          <div className="empty">
+            <User size={24} strokeWidth={1.5} />
+            <p>Nenhum paciente encontrado.</p>
+          </div>
+        )}
+        {filteredPatients.map((p) => {
+          const checked = participantIds.includes(p.id);
+          return (
+            <button
+              key={p.id}
+              className={checked ? "participant-row active" : "participant-row"}
+              onClick={() => toggleParticipant(p.id)}
+            >
+              <div className="patient-avatar">{p.name.charAt(0).toUpperCase()}</div>
+              <div className="patient-info">
+                <div className="patient-name">{p.name}</div>
+                <div className="patient-meta">
+                  {p.ubsId ? getUbsName(ubsList, p.ubsId) : "Sem UBS"}
+                </div>
+              </div>
+              {checked && <Check size={18} color="var(--accent)" />}
+            </button>
+          );
+        })}
+      </div>
+
+      <button className="btn-primary btn-block" disabled={!title.trim()} onClick={submit}>
+        <Check size={18} /> Salvar aula
+      </button>
+
+      {aula && (
+        <div className="danger-zone">
+          {!confirmingDelete ? (
+            <button className="btn-danger-ghost" onClick={() => setConfirmingDelete(true)}>
+              <Trash2 size={16} /> Excluir aula
+            </button>
+          ) : (
+            <div className="confirm-card">
+              <p>
+                Isso apagará esta aula e a lista de participantes. Esta ação não pode ser
+                desfeita.
+              </p>
+              <div className="form-actions">
+                <button className="btn-ghost" onClick={() => setConfirmingDelete(false)}>
+                  Cancelar
+                </button>
+                <button className="btn-danger" onClick={() => onDelete(aula.id)}>
+                  <Trash2 size={16} /> Excluir definitivamente
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UBSSettingsScreen({ ubsList, onBack, onSave }) {
+  const [names, setNames] = useState(ubsList);
+
+  const setName = (idx, val) => {
+    setNames((prev) => {
+      const next = [...prev];
+      next[idx] = val;
+      return next;
+    });
+  };
+
+  return (
+    <div className="screen">
+      <TopBar title="Gerenciar UBS" onBack={onBack} />
+      <p className="subtitle">Dê um nome a cada uma das 10 unidades</p>
+
+      <div className="form-card">
+        {names.map((name, idx) => (
+          <div key={idx} className="form-row">
+            <label>UBS {idx + 1}</label>
+            <input
+              value={name}
+              onChange={(e) => setName(idx, e.target.value)}
+              placeholder={`UBS ${idx + 1}`}
+            />
+          </div>
+        ))}
+        <div className="form-actions">
+          <button className="btn-ghost" onClick={onBack}>
+            Cancelar
+          </button>
+          <button className="btn-primary" onClick={() => onSave(names)}>
+            <Check size={16} /> Salvar unidades
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PatientEditScreen({ patient, onBack, onSave, onDelete, ubsList }) {
   const [name, setName] = useState(patient.name);
   const [age, setAge] = useState(String(patient.age));
+  const [birthDate, setBirthDate] = useState(patient.birthDate || "");
+  const [cpf, setCpf] = useState(patient.cpf || "");
+  const [susNumber, setSusNumber] = useState(patient.susNumber || "");
   const [sex, setSex] = useState(patient.sex);
+  const [ubsId, setUbsId] = useState(patient.ubsId || "ubs1");
   const [health, setHealth] = useState(patient.health || EMPTY_HEALTH);
   const updateHealth = (patch) => setHealth((prev) => ({ ...prev, ...patch }));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  const handleBirthDateChange = (val) => {
+    setBirthDate(val);
+    const computed = calcAgeFromBirthDate(val);
+    if (computed !== null) setAge(String(computed));
+  };
+
   const submit = () => {
     if (!name.trim() || !age) return;
     const imc = calcImc(health.weight, health.height);
-    onSave({ ...patient, name: name.trim(), age: parseInt(age, 10), sex, health: { ...health, imc } });
+    onSave({
+      ...patient,
+      name: name.trim(),
+      age: parseInt(age, 10),
+      birthDate: birthDate || null,
+      cpf: cpf.trim() || null,
+      susNumber: susNumber.trim() || null,
+      sex,
+      ubsId,
+      health: { ...health, imc },
+    });
   };
 
   return (
@@ -877,7 +1453,16 @@ function PatientEditScreen({ patient, onBack, onSave, onDelete }) {
           <label>Nome</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome completo" />
         </div>
+
         <div className="form-row form-row-split">
+          <div>
+            <label>Data de nascimento</label>
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => handleBirthDateChange(e.target.value)}
+            />
+          </div>
           <div>
             <label>Idade</label>
             <input
@@ -887,17 +1472,49 @@ function PatientEditScreen({ patient, onBack, onSave, onDelete }) {
               placeholder="Ex: 72"
             />
           </div>
-          <div>
-            <label>Sexo</label>
-            <div className="segmented">
-              <button className={sex === "F" ? "seg active" : "seg"} onClick={() => setSex("F")}>
-                Feminino
-              </button>
-              <button className={sex === "M" ? "seg active" : "seg"} onClick={() => setSex("M")}>
-                Masculino
-              </button>
-            </div>
+        </div>
+
+        <div className="form-row">
+          <label>Sexo</label>
+          <div className="segmented">
+            <button className={sex === "F" ? "seg active" : "seg"} onClick={() => setSex("F")}>
+              Feminino
+            </button>
+            <button className={sex === "M" ? "seg active" : "seg"} onClick={() => setSex("M")}>
+              Masculino
+            </button>
           </div>
+        </div>
+
+        <div className="form-row form-row-split">
+          <div>
+            <label>CPF</label>
+            <input
+              value={cpf}
+              onChange={(e) => setCpf(e.target.value)}
+              placeholder="000.000.000-00"
+            />
+          </div>
+          <div>
+            <label>Cartão SUS</label>
+            <input
+              inputMode="numeric"
+              value={susNumber}
+              onChange={(e) => setSusNumber(e.target.value)}
+              placeholder="Número do cartão"
+            />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <label>UBS de origem</label>
+          <select value={ubsId} onChange={(e) => setUbsId(e.target.value)}>
+            {ubsList.map((ubsName, idx) => (
+              <option key={idx} value={`ubs${idx + 1}`}>
+                {ubsName}
+              </option>
+            ))}
+          </select>
         </div>
 
         <HealthFields health={health} onChange={updateHealth} />
@@ -1050,7 +1667,7 @@ function TestRunScreen({ testId, patient, onBack, onSave }) {
     finalValue = manualValue === "" ? null : parseFloat(manualValue);
   }
   if (test.input === "manual") finalValue = manualValue === "" ? null : parseFloat(manualValue);
-  if (test.input === "checklist") {
+  if (test.input === "checklist" || test.input === "mnasf") {
     const answered = test.items.every((_, idx) => itemScores[idx] !== undefined);
     finalValue = answered
       ? test.items.reduce((sum, _, idx) => sum + itemScores[idx], 0)
@@ -1060,7 +1677,7 @@ function TestRunScreen({ testId, patient, onBack, onSave }) {
   let canSave = false;
   if (isManualOverride) {
     canSave = finalValue !== null && !isNaN(finalValue);
-  } else if (test.input === "manual" || test.input === "checklist") {
+  } else if (test.input === "manual" || test.input === "checklist" || test.input === "mnasf") {
     canSave = finalValue !== null && !isNaN(finalValue);
   } else if (test.input === "walk6") {
     canSave = phase === "measuring" && finalValue !== null && !isNaN(finalValue);
@@ -1367,6 +1984,40 @@ function TestRunScreen({ testId, patient, onBack, onSave }) {
             </div>
           </div>
         )}
+
+        {test.input === "mnasf" && (
+          <div className="mnasf-list">
+            {test.items.map((item, idx) => (
+              <div key={idx} className="mnasf-item">
+                <div className="mnasf-item-label">{item.label}</div>
+                {item.showImcReference && (
+                  <div className="mnasf-imc-ref">
+                    IMC cadastrado:{" "}
+                    <strong>
+                      {patient.health && patient.health.imc
+                        ? `${patient.health.imc} kg/m²`
+                        : "não registrado"}
+                    </strong>
+                  </div>
+                )}
+                <div className="mnasf-options">
+                  {item.options.map((opt) => (
+                    <button
+                      key={opt.score}
+                      className={itemScores[idx] === opt.score ? "mnasf-option active" : "mnasf-option"}
+                      onClick={() => setItemScores((prev) => ({ ...prev, [idx]: opt.score }))}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="checklist-total">
+              Total: {Object.values(itemScores).reduce((a, b) => a + b, 0)} / 14
+            </div>
+          </div>
+        )}
       </div>
 
       {finalValue !== null && !isNaN(finalValue) && canSave && (
@@ -1569,7 +2220,7 @@ function ReportView({ patient, results, scope }) {
     <div className="report">
       <div className="report-header">
         <div>
-          <div className="report-brand">Douglas Valeriano (Personal Sênior)</div>
+          <div className="report-brand">Acompanhamento de unidades e pacientes (Emulti)</div>
           <div className="report-title">
             {isSingleTest ? `Evolução — ${TESTS[scope.testId].name}` : "Relatório de Avaliação Física"}
           </div>
@@ -1674,6 +2325,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [patients, setPatients] = useState([]);
+  const [ubsList, setUbsList] = useState(DEFAULT_UBS_LIST);
+  const [aulas, setAulas] = useState([]);
   const [resultsByPatient, setResultsByPatient] = useState({});
   const [nav, setNav] = useState({ screen: "patients" });
   const [exportScope, setExportScope] = useState(null);
@@ -1696,11 +2349,35 @@ export default function App() {
     if (!user) return;
     setLoading(true);
     (async () => {
-      const p = await loadPatients(user.uid);
+      const [p, u, a] = await Promise.all([
+        loadPatients(user.uid),
+        loadUbsList(user.uid),
+        loadAulas(user.uid),
+      ]);
       setPatients(p);
+      setUbsList(u);
+      setAulas(a);
       setLoading(false);
     })();
   }, [user]);
+
+  const saveUbsSettings = async (names) => {
+    setUbsList(names);
+    if (user) await saveUbsList(user.uid, names);
+  };
+
+  const saveAula = async (aula) => {
+    setAulas((prev) => {
+      const exists = prev.some((a) => a.id === aula.id);
+      return exists ? prev.map((a) => (a.id === aula.id ? aula : a)) : [...prev, aula];
+    });
+    if (user) await saveAulaDoc(user.uid, aula);
+  };
+
+  const deleteAula = async (aulaId) => {
+    setAulas((prev) => prev.filter((a) => a.id !== aulaId));
+    if (user) await deleteAulaDoc(user.uid, aulaId);
+  };
 
   useEffect(() => {
     const reset = () => {
@@ -1728,6 +2405,14 @@ export default function App() {
     const target = patients.find((p) => p.id === patientId);
     if (!target) return;
     const updated = { ...target, reportValues: values, reportDates: dates, notes: notesText };
+    setPatients((prev) => prev.map((p) => (p.id === patientId ? updated : p)));
+    await savePatientDoc(user.uid, updated);
+  };
+
+  const saveNotes = async (patientId, notesText) => {
+    const target = patients.find((p) => p.id === patientId);
+    if (!target) return;
+    const updated = { ...target, notes: notesText };
     setPatients((prev) => prev.map((p) => (p.id === patientId ? updated : p)));
     await savePatientDoc(user.uid, updated);
   };
@@ -1806,11 +2491,74 @@ export default function App() {
     <div className="app-frame">
       <div className="no-print">
         {nav.screen === "patients" && (
-          <PatientsScreen
+          <UBSFoldersScreen
             patients={patients}
+            ubsList={ubsList}
+            onOpenUbs={(ubsId, ubsName) => setNav({ screen: "patientsInUbs", ubsId, ubsName })}
+            onLogout={() => signOut(auth)}
+            onSettings={() => setNav({ screen: "ubsSettings" })}
+          />
+        )}
+
+        {nav.screen === "patientsInUbs" && (
+          <PatientsInUbsScreen
+            patients={patients}
+            ubsId={nav.ubsId}
+            ubsName={nav.ubsName}
             onOpen={openPatient}
             onAdd={addPatient}
-            onLogout={() => signOut(auth)}
+            onBack={() => setNav({ screen: "patients" })}
+          />
+        )}
+
+        {nav.screen === "calendar" && (
+          <CalendarScreen
+            aulas={aulas}
+            onSelectDay={(dateIso) => setNav({ screen: "day", dateIso })}
+          />
+        )}
+
+        {nav.screen === "day" && (
+          <DayScreen
+            dateIso={nav.dateIso}
+            aulas={aulas}
+            ubsList={ubsList}
+            onBack={() => setNav({ screen: "calendar" })}
+            onNewAula={() => setNav({ screen: "aulaForm", dateIso: nav.dateIso })}
+            onOpenAula={(aulaId) => setNav({ screen: "aulaForm", dateIso: nav.dateIso, aulaId })}
+          />
+        )}
+
+        {nav.screen === "aulaForm" && (
+          <AulaFormScreen
+            aula={aulas.find((a) => a.id === nav.aulaId) || null}
+            dateIso={nav.dateIso}
+            patients={patients}
+            ubsList={ubsList}
+            onBack={() => setNav({ screen: "day", dateIso: nav.dateIso })}
+            onSave={(aula) => {
+              saveAula(aula);
+              setNav({ screen: "day", dateIso: nav.dateIso });
+            }}
+            onDelete={(aulaId) => {
+              deleteAula(aulaId);
+              setNav({ screen: "day", dateIso: nav.dateIso });
+            }}
+          />
+        )}
+
+        {(nav.screen === "patients" || nav.screen === "calendar") && (
+          <BottomNav active={nav.screen} onNavigate={(screen) => setNav({ screen })} />
+        )}
+
+        {nav.screen === "ubsSettings" && (
+          <UBSSettingsScreen
+            ubsList={ubsList}
+            onBack={() => setNav({ screen: "patients" })}
+            onSave={(names) => {
+              saveUbsSettings(names);
+              setNav({ screen: "patients" });
+            }}
           />
         )}
 
@@ -1818,10 +2566,17 @@ export default function App() {
           <PatientDetailScreen
             patient={patient}
             results={resultsByPatient[patient.id] || []}
-            onBack={() => setNav({ screen: "patients" })}
+            onBack={() =>
+              setNav({
+                screen: "patientsInUbs",
+                ubsId: patient.ubsId || null,
+                ubsName: patient.ubsId ? getUbsName(ubsList, patient.ubsId) : "Sem UBS",
+              })
+            }
             onNewTest={() => setNav({ screen: "testSelect", patientId: patient.id })}
             onHistory={(testId) => setNav({ screen: "history", patientId: patient.id, testId })}
             onExportPdf={() => setNav({ screen: "reportEdit", patientId: patient.id })}
+            onSaveNotes={(text) => saveNotes(patient.id, text)}
             onEdit={() => setNav({ screen: "patientEdit", patientId: patient.id })}
           />
         )}
@@ -1843,6 +2598,7 @@ export default function App() {
             onBack={() => setNav({ screen: "patientDetail", patientId: patient.id })}
             onSave={updatePatient}
             onDelete={deletePatient}
+            ubsList={ubsList}
           />
         )}
 
@@ -1905,6 +2661,7 @@ function Styles() {
         --ochre: #F2A93C;
         --slate: #6C9BD8;
         --brick: #F2665A;
+        --sage: #8FBF6F;
         --line: #333333;
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.35);
         --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.4);
@@ -1933,6 +2690,159 @@ function Styles() {
 
       .screen {
         padding: 18px 18px 32px;
+      }
+      .screen-with-nav {
+        padding-bottom: 86px;
+      }
+
+      .screen-bg-login,
+      .screen-bg-folders {
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+      }
+      .screen-bg-login {
+        background-image: linear-gradient(rgba(18, 18, 18, 0.82), rgba(18, 18, 18, 0.93)),
+          url("/images/bg-login.jpg");
+      }
+      .screen-bg-folders {
+        background-image: linear-gradient(rgba(18, 18, 18, 0.8), rgba(18, 18, 18, 0.92)),
+          url("/images/bg-folders.png");
+      }
+
+      .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-width: 420px;
+        margin: 0 auto;
+        display: flex;
+        background: var(--surface);
+        border-top: 1px solid var(--line);
+        z-index: 20;
+        padding-bottom: env(safe-area-inset-bottom, 0);
+      }
+      .bottom-nav-item {
+        flex: 1;
+        background: none;
+        border: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        padding: 10px 4px 8px;
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--ink-faint);
+        cursor: pointer;
+      }
+      .bottom-nav-item.active { color: var(--accent); }
+
+      .calendar-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .calendar-month-label {
+        font-family: 'Newsreader', serif;
+        font-weight: 600;
+        font-size: 16px;
+        text-transform: capitalize;
+      }
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+      }
+      .calendar-weekdays { margin-bottom: 6px; }
+      .calendar-weekday {
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ink-faint);
+        padding: 4px 0;
+      }
+      .calendar-cell {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        font-family: inherit;
+        font-size: 13px;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .calendar-cell.empty {
+        background: transparent;
+        border: none;
+        cursor: default;
+      }
+      .calendar-cell.today {
+        border-color: var(--accent);
+        font-weight: 700;
+        color: var(--accent);
+      }
+      .calendar-dot {
+        position: absolute;
+        bottom: 5px;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .aula-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
+        text-align: left;
+        cursor: pointer;
+        color: var(--ink);
+        box-shadow: var(--shadow-sm);
+      }
+      .aula-row-main { flex: 1; }
+      .aula-row-title { font-weight: 600; font-size: 14px; }
+      .aula-row-meta { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
+
+      .participant-search {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 10px 11px;
+        font-size: 14px;
+        font-family: inherit;
+        background: var(--paper);
+        color: var(--ink);
+        box-sizing: border-box;
+        margin-bottom: 4px;
+      }
+      .participant-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 14px;
+        text-align: left;
+        cursor: pointer;
+        color: var(--ink);
+        box-shadow: var(--shadow-sm);
+      }
+      .participant-row.active {
+        border-color: var(--accent);
       }
 
       .topbar {
@@ -1994,6 +2904,14 @@ function Styles() {
         color: var(--ink-faint);
         font-size: 14px;
         margin: 2px 0 18px;
+      }
+      .patient-ids {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px 14px;
+        font-size: 12px;
+        color: var(--ink-faint);
+        margin: -12px 0 18px;
       }
 
       .list {
@@ -2083,7 +3001,8 @@ function Styles() {
         margin-bottom: 5px;
       }
       .form-row input,
-      .form-row textarea {
+      .form-row textarea,
+      .form-row select {
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 9px;
@@ -2094,6 +3013,42 @@ function Styles() {
         color: var(--ink);
         box-sizing: border-box;
       }
+      .form-row select {
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239C9690' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        padding-right: 34px;
+      }
+      .ubs-folder-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 13px 14px;
+        text-align: left;
+        cursor: pointer;
+        color: var(--ink);
+        box-shadow: var(--shadow-sm);
+      }
+      .ubs-folder-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent);
+        flex-shrink: 0;
+      }
+      .ubs-folder-info { flex: 1; }
+      .ubs-folder-name { font-weight: 600; font-size: 14.5px; }
+      .ubs-folder-count { font-size: 12.5px; color: var(--ink-faint); margin-top: 1px; }
       .form-row textarea {
         resize: vertical;
         line-height: 1.5;
@@ -2475,6 +3430,56 @@ function Styles() {
         color: var(--ink-faint);
       }
       .calf-reference strong { color: var(--ink); }
+      .mnasf-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+      }
+      .mnasf-item {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 13px;
+      }
+      .mnasf-item-label {
+        font-size: 13px;
+        line-height: 1.5;
+        margin-bottom: 10px;
+        font-weight: 600;
+      }
+      .mnasf-imc-ref {
+        font-size: 12.5px;
+        color: var(--ink-faint);
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 7px 10px;
+        margin-bottom: 10px;
+      }
+      .mnasf-imc-ref strong { color: var(--ink); }
+      .mnasf-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .mnasf-option {
+        text-align: left;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 11px;
+        font-family: inherit;
+        font-size: 13px;
+        color: var(--ink-faint);
+        cursor: pointer;
+      }
+      .mnasf-option.active {
+        background: var(--sage);
+        border-color: var(--sage);
+        color: #1B2A12;
+        font-weight: 600;
+      }
       .checklist-item {
         display: flex;
         align-items: center;
@@ -2523,6 +3528,9 @@ function Styles() {
         border-top: 1px solid var(--line);
       }
 
+      .patient-notes-card {
+        margin: 6px 0 18px;
+      }
       .danger-zone {
         margin-top: 24px;
         padding-top: 18px;
