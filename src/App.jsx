@@ -696,6 +696,10 @@ function HealthSummary({ health }) {
 
 function LoginScreen() {
   const [mode, setMode] = useState("login"); // login | signup
+  useEffect(() => {
+    document.body.classList.add("bg-login");
+    return () => document.body.classList.remove("bg-login");
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -726,7 +730,7 @@ function LoginScreen() {
   };
 
   return (
-    <div className="screen screen-bg-login">
+    <div className="screen">
       <TopBar title="Acompanhamento de unidades e pacientes (Emulti)" />
       <p className="subtitle">Avaliação física para idosos</p>
 
@@ -770,8 +774,13 @@ function LoginScreen() {
 function UBSFoldersScreen({ patients, ubsList, onOpenUbs, onSettings, onLogout }) {
   const noUbsCount = patients.filter((p) => !p.ubsId).length;
 
+  useEffect(() => {
+    document.body.classList.add("bg-folders");
+    return () => document.body.classList.remove("bg-folders");
+  }, []);
+
   return (
-    <div className="screen screen-with-nav screen-bg-folders">
+    <div className="screen screen-with-nav">
       <TopBar
         title="Acompanhamento de unidades e pacientes (Emulti)"
         right={
@@ -1600,7 +1609,14 @@ function TestRunScreen({ testId, patient, onBack, onSave }) {
   const [itemScores, setItemScores] = useState({});
   const [mode, setMode] = useState("auto"); // auto | manual (manual override for timed/counted tests)
   const [manualOverride, setManualOverride] = useState("");
+  const [assessmentDate, setAssessmentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const countdownRef = useRef(null);
+
+  const buildDateTime = (dateStr) => {
+    const now = new Date();
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString();
+  };
 
   const MANUAL_OVERRIDE_TYPES = ["timer", "timer-distance", "countdown-counter", "walk6"];
   const supportsManualOverride = MANUAL_OVERRIDE_TYPES.includes(test.input);
@@ -1696,7 +1712,7 @@ function TestRunScreen({ testId, patient, onBack, onSave }) {
       unit: test.unit,
       tone: classification.tone,
       label: classification.label,
-      date: new Date().toISOString(),
+      date: buildDateTime(assessmentDate),
       extra:
         test.input === "timer-distance"
           ? { seconds: isManualOverride ? parseFloat(manualOverride) : Math.round(sw.elapsed * 10) / 10 }
@@ -1713,6 +1729,15 @@ function TestRunScreen({ testId, patient, onBack, onSave }) {
         style={{ borderLeftColor: CATEGORIES[test.category].color }}
       >
         {test.protocol}
+      </div>
+
+      <div className="form-row assessment-date-row">
+        <label>Data da avaliação</label>
+        <input
+          type="date"
+          value={assessmentDate}
+          onChange={(e) => setAssessmentDate(e.target.value)}
+        />
       </div>
 
       {supportsManualOverride && (
@@ -2695,20 +2720,24 @@ function Styles() {
         padding-bottom: 86px;
       }
 
-      .screen-bg-login,
-      .screen-bg-folders {
+      body.bg-login,
+      body.bg-folders {
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
         background-attachment: fixed;
       }
-      .screen-bg-login {
-        background-image: linear-gradient(rgba(18, 18, 18, 0.82), rgba(18, 18, 18, 0.93)),
+      body.bg-login {
+        background-image: linear-gradient(rgba(18, 18, 18, 0.68), rgba(18, 18, 18, 0.85)),
           url("/images/bg-login.jpg");
       }
-      .screen-bg-folders {
-        background-image: linear-gradient(rgba(18, 18, 18, 0.8), rgba(18, 18, 18, 0.92)),
+      body.bg-folders {
+        background-image: linear-gradient(rgba(18, 18, 18, 0.68), rgba(18, 18, 18, 0.85)),
           url("/images/bg-folders.png");
+      }
+      body.bg-login .app-frame,
+      body.bg-folders .app-frame {
+        background: transparent;
       }
 
       .bottom-nav {
@@ -3304,6 +3333,9 @@ function Styles() {
       .test-pick-name { font-weight: 600; font-size: 14.5px; margin-bottom: 4px; }
       .test-pick-protocol { font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
 
+      .assessment-date-row {
+        margin-bottom: 16px;
+      }
       .protocol-card {
         background: var(--surface);
         border: 1px solid var(--line);
