@@ -2138,96 +2138,6 @@ function HistoryScreen({ testId, patient, results, onBack, onExportPdf, onStartT
   );
 }
 
-function ReportEditScreen({ patient, onBack, onGenerate }) {
-  const savedValues = patient.reportValues || {};
-  const [values, setValues] = useState(() => {
-    const v = {};
-    Object.keys(TESTS).forEach((id) => {
-      v[id] = savedValues[id] ? [...savedValues[id]] : ["", "", ""];
-    });
-    return v;
-  });
-  const [dates, setDates] = useState(patient.reportDates || ["", "", ""]);
-  const [notesText, setNotesText] = useState(patient.notes || "");
-
-  const setCell = (testId, colIdx, val) => {
-    setValues((prev) => {
-      const row = [...prev[testId]];
-      row[colIdx] = val;
-      return { ...prev, [testId]: row };
-    });
-  };
-
-  const setDateCol = (colIdx, val) => {
-    setDates((prev) => {
-      const next = [...prev];
-      next[colIdx] = val;
-      return next;
-    });
-  };
-
-  return (
-    <div className="screen">
-      <TopBar title="Relatório" onBack={onBack} />
-      <p className="subtitle">Preencha os valores das 3 avaliações</p>
-
-      <table className="report-table">
-        <thead>
-          <tr>
-            <th>Categoria</th>
-            <th>Teste</th>
-            {[0, 1, 2].map((i) => (
-              <th key={i}>
-                Avaliação {i + 1}
-                <input
-                  type="date"
-                  className="report-date-input"
-                  value={dates[i]}
-                  onChange={(e) => setDateCol(i, e.target.value)}
-                />
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(TESTS).map(([id, t]) => (
-            <tr key={id}>
-              <td>{CATEGORIES[t.category].label}</td>
-              <td>{t.name}</td>
-              {[0, 1, 2].map((i) => (
-                <td key={i}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={values[id][i]}
-                    onChange={(e) => setCell(id, i, e.target.value)}
-                  />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="form-card" style={{ marginTop: 16 }}>
-        <div className="form-row">
-          <label>Observações</label>
-          <textarea
-            rows={4}
-            value={notesText}
-            onChange={(e) => setNotesText(e.target.value)}
-            placeholder="Escreva observações sobre o acompanhamento do paciente..."
-          />
-        </div>
-      </div>
-
-      <button className="btn-primary btn-block" onClick={() => onGenerate(values, dates, notesText)}>
-        <Printer size={18} /> Gerar e imprimir relatório
-      </button>
-    </div>
-  );
-}
-
 function ReportView({ patient, results, scope }) {
   if (!patient) return null;
   const generatedAt = new Date().toLocaleString("pt-BR");
@@ -2265,25 +2175,27 @@ function ReportView({ patient, results, scope }) {
             <tr>
               <th>Categoria</th>
               <th>Teste</th>
-              {[0, 1, 2].map((i) => (
-                <th key={i}>
-                  {patient.reportDates && patient.reportDates[i]
-                    ? fmtISODate(patient.reportDates[i])
-                    : `Avaliação ${i + 1}`}
-                </th>
-              ))}
+              <th>Avaliação 1</th>
+              <th>Avaliação 2</th>
+              <th>Avaliação 3</th>
             </tr>
           </thead>
           <tbody>
             {Object.entries(TESTS).map(([id, t]) => {
-              const vals = (patient.reportValues && patient.reportValues[id]) || ["", "", ""];
+              const testResults = results
+                .filter((r) => r.testId === id)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+              const last3 = testResults.slice(-3);
+              while (last3.length < 3) last3.unshift(null);
               return (
                 <tr key={id}>
                   <td>{CATEGORIES[t.category].label}</td>
                   <td>{t.name}</td>
-                  <td className="report-blank-cell">{vals[0]}</td>
-                  <td className="report-blank-cell">{vals[1]}</td>
-                  <td className="report-blank-cell">{vals[2]}</td>
+                  {last3.map((r, i) => (
+                    <td key={i} className="report-blank-cell">
+                      {r ? `${r.value} ${t.unit} (${fmtDate(r.date)})` : "—"}
+                    </td>
+                  ))}
                 </tr>
               );
             })}
@@ -2405,14 +2317,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    const reset = () => {
-      setExportScope(null);
-      setNav((prev) =>
-        prev.screen === "reportEdit"
-          ? { screen: "patientDetail", patientId: prev.patientId }
-          : prev
-      );
-    };
+    const reset = () => setExportScope(null);
     window.addEventListener("afterprint", reset);
     return () => window.removeEventListener("afterprint", reset);
   }, []);
@@ -2426,13 +2331,6 @@ export default function App() {
     setTimeout(() => window.print(), 150);
   };
 
-  const saveReportData = async (patientId, values, dates, notesText) => {
-    const target = patients.find((p) => p.id === patientId);
-    if (!target) return;
-    const updated = { ...target, reportValues: values, reportDates: dates, notes: notesText };
-    setPatients((prev) => prev.map((p) => (p.id === patientId ? updated : p)));
-    await savePatientDoc(user.uid, updated);
-  };
 
   const saveNotes = async (patientId, notesText) => {
     const target = patients.find((p) => p.id === patientId);
@@ -2600,20 +2498,9 @@ export default function App() {
             }
             onNewTest={() => setNav({ screen: "testSelect", patientId: patient.id })}
             onHistory={(testId) => setNav({ screen: "history", patientId: patient.id, testId })}
-            onExportPdf={() => setNav({ screen: "reportEdit", patientId: patient.id })}
+            onExportPdf={exportFullReport}
             onSaveNotes={(text) => saveNotes(patient.id, text)}
             onEdit={() => setNav({ screen: "patientEdit", patientId: patient.id })}
-          />
-        )}
-
-        {nav.screen === "reportEdit" && patient && (
-          <ReportEditScreen
-            patient={patient}
-            onBack={() => setNav({ screen: "patientDetail", patientId: patient.id })}
-            onGenerate={(values, dates, notesText) => {
-              saveReportData(patient.id, values, dates, notesText);
-              exportFullReport();
-            }}
           />
         )}
 
