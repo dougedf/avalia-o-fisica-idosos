@@ -2615,11 +2615,11 @@ function Styles() {
         background-attachment: fixed;
       }
       body.bg-login {
-        background-image: linear-gradient(rgba(18, 18, 18, 0.68), rgba(18, 18, 18, 0.85)),
+        background-image: linear-gradient(rgba(18, 18, 18, 0.35), rgba(18, 18, 18, 0.55)),
           url("/images/bg-login.jpg");
       }
       body.bg-folders {
-        background-image: linear-gradient(rgba(18, 18, 18, 0.68), rgba(18, 18, 18, 0.85)),
+        background-image: linear-gradient(rgba(18, 18, 18, 0.35), rgba(18, 18, 18, 0.55)),
           url("/images/bg-folders.png");
       }
       body.bg-login .app-frame,
