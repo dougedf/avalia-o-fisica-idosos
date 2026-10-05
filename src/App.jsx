@@ -23,6 +23,7 @@ import {
   Settings,
   Folder,
   Apple,
+  Trophy,
 } from "lucide-react";
 import {
   LineChart,
@@ -61,6 +62,7 @@ const CATEGORIES = {
   strength: { label: "Força", color: "var(--ochre)", icon: Dumbbell },
   mobility: { label: "Mobilidade", color: "var(--slate)", icon: Footprints },
   nutrition: { label: "Nutrição", color: "var(--sage)", icon: Apple },
+  sft: { label: "Senior Fitness Test", color: "var(--indigo)", icon: Trophy },
 };
 
 const CHAIR_STAND_TABLE = {
@@ -91,6 +93,125 @@ function chairStandBand(age, sex) {
     (age < 60 ? rows[0] : rows[rows.length - 1]);
   return { min: row[2], max: row[3] };
 }
+
+/* ---------------------------------------------------------------
+   Senior Fitness Test (Rikli & Jones) — normative tables
+   Source: Rikli, R. E., & Jones, C. J. (1999, 2013).
+   Each row: [idadeMin, idadeMax, valorMin, valorMax]
+---------------------------------------------------------------- */
+
+function sftBand(table, age, sex) {
+  const rows = table[sex] || table.F;
+  const row =
+    rows.find((r) => age >= r[0] && age <= r[1]) ||
+    (age < rows[0][0] ? rows[0] : rows[rows.length - 1]);
+  return { min: row[2], max: row[3] };
+}
+
+const ARM_CURL_TABLE = {
+  M: [
+    [60, 64, 16, 22],
+    [65, 69, 15, 21],
+    [70, 74, 14, 21],
+    [75, 79, 13, 19],
+    [80, 84, 13, 19],
+    [85, 89, 11, 17],
+    [90, 99, 10, 14],
+  ],
+  F: [
+    [60, 64, 13, 19],
+    [65, 69, 12, 18],
+    [70, 74, 12, 17],
+    [75, 79, 11, 17],
+    [80, 84, 10, 16],
+    [85, 89, 10, 15],
+    [90, 99, 8, 13],
+  ],
+};
+
+const SIT_REACH_TABLE = {
+  M: [
+    [60, 64, -2.5, 4.0],
+    [65, 69, -3.0, 3.0],
+    [70, 74, -3.5, 2.5],
+    [75, 79, -4.0, 2.0],
+    [80, 84, -5.5, 1.5],
+    [85, 89, -5.5, 0.5],
+    [90, 99, -6.5, -0.5],
+  ],
+  F: [
+    [60, 64, -0.5, 5.0],
+    [65, 69, -0.5, 4.5],
+    [70, 74, -1.0, 4.0],
+    [75, 79, -1.5, 3.5],
+    [80, 84, -2.0, 3.0],
+    [85, 89, -2.5, 2.5],
+    [90, 99, -4.5, 1.0],
+  ],
+};
+
+const BACK_SCRATCH_TABLE = {
+  M: [
+    [60, 64, -6.5, 0],
+    [65, 69, -7.5, -1],
+    [70, 74, -8.0, -1],
+    [75, 79, -9.0, -2],
+    [80, 84, -9.5, -2],
+    [85, 89, -10.0, -3],
+    [90, 99, -10.5, -4],
+  ],
+  F: [
+    [60, 64, -3.0, 1.5],
+    [65, 69, -3.5, 1.5],
+    [70, 74, -4.0, 1.0],
+    [75, 79, -5.0, 0.5],
+    [80, 84, -5.5, 0],
+    [85, 89, -7.0, -1],
+    [90, 99, -8.0, -1],
+  ],
+};
+
+const UPGO_TABLE = {
+  M: [
+    [60, 64, 3.8, 5.6],
+    [65, 69, 4.3, 5.9],
+    [70, 74, 4.4, 6.2],
+    [75, 79, 4.6, 7.2],
+    [80, 84, 5.2, 7.6],
+    [85, 89, 5.3, 8.9],
+    [90, 99, 6.2, 10.0],
+  ],
+  F: [
+    [60, 64, 4.4, 6.0],
+    [65, 69, 4.8, 6.4],
+    [70, 74, 4.9, 7.1],
+    [75, 79, 5.2, 7.4],
+    [80, 84, 5.7, 8.7],
+    [85, 89, 6.2, 9.6],
+    [90, 99, 7.3, 11.5],
+  ],
+};
+
+const SFT_6MWT_TABLE = {
+  M: [
+    [60, 64, 610, 735],
+    [65, 69, 560, 700],
+    [70, 74, 545, 680],
+    [75, 79, 470, 640],
+    [80, 84, 445, 605],
+    [85, 89, 380, 570],
+    [90, 99, 305, 500],
+  ],
+  F: [
+    [60, 64, 545, 660],
+    [65, 69, 500, 635],
+    [70, 74, 480, 615],
+    [75, 79, 430, 585],
+    [80, 84, 385, 540],
+    [85, 89, 340, 510],
+    [90, 99, 275, 440],
+  ],
+};
 
 const SARCF_ITEMS = [
   "Força: dificuldade para levantar e carregar objetos de cerca de 4,5 kg (0 = nenhuma, 1 = alguma, 2 = muita ou incapaz)",
@@ -283,6 +404,93 @@ const TESTS = {
       if (total >= 8)
         return { label: "Risco de desnutrição", tone: "mid" };
       return { label: "Desnutrido", tone: "high" };
+    },
+  },
+  sft_chair_stand: {
+    category: "sft",
+    name: "Sentar e Levantar (30s) — SFT",
+    unit: "repetições",
+    input: "countdown-counter",
+    duration: 30,
+    protocol:
+      "Teste do Senior Fitness Test (Rikli & Jones). Cadeira sem braços, encostada na parede. A pessoa inicia sentada, braços cruzados no peito. Ao sinal, deve levantar e sentar o maior número de vezes possível em 30 segundos.",
+    classify: (v, patient) => {
+      const { min, max } = chairStandBand(patient.age, patient.sex);
+      if (v < min)
+        return { label: `Abaixo da média da faixa etária (${min}–${max})`, tone: "mid" };
+      return { label: `Dentro da média da faixa etária (${min}–${max})`, tone: "good" };
+    },
+  },
+  sft_arm_curl: {
+    category: "sft",
+    name: "Flexão de Braço (30s) — SFT",
+    unit: "repetições",
+    input: "countdown-counter",
+    duration: 30,
+    protocol:
+      "Teste do Senior Fitness Test (Rikli & Jones). Sentado(a), segurando um peso de mão (2,3 kg para mulheres, 3,6 kg para homens), braço estendido para baixo. Ao sinal, flexione o cotovelo o maior número de vezes possível em 30 segundos.",
+    classify: (v, patient) => {
+      const { min, max } = sftBand(ARM_CURL_TABLE, patient.age, patient.sex);
+      if (v < min)
+        return { label: `Abaixo da média da faixa etária (${min}–${max})`, tone: "mid" };
+      return { label: `Dentro da média da faixa etária (${min}–${max})`, tone: "good" };
+    },
+  },
+  sft_6mwt: {
+    category: "sft",
+    name: "Caminhada de 6 Minutos — SFT",
+    unit: "m",
+    input: "walk6",
+    duration: 360,
+    protocol:
+      "Teste do Senior Fitness Test (Rikli & Jones). Marque um corredor plano. Peça para caminhar o mais rápido possível, sem correr, durante 6 minutos. Registre a distância total percorrida.",
+    classify: (v, patient) => {
+      const { min, max } = sftBand(SFT_6MWT_TABLE, patient.age, patient.sex);
+      if (v < min)
+        return { label: `Abaixo da média da faixa etária (${min}–${max})`, tone: "mid" };
+      return { label: `Dentro da média da faixa etária (${min}–${max})`, tone: "good" };
+    },
+  },
+  sft_sit_reach: {
+    category: "sft",
+    name: "Sentar e Alcançar — SFT",
+    unit: "cm",
+    input: "manual",
+    protocol:
+      "Teste do Senior Fitness Test (Rikli & Jones). Sentado(a) na beira da cadeira, uma perna estendida, a outra flexionada no chão. Incline o tronco à frente tentando alcançar a ponta do pé. Registre a distância entre os dedos e a ponta do pé (negativo se não alcançar, positivo se ultrapassar).",
+    classify: (v, patient) => {
+      const { min, max } = sftBand(SIT_REACH_TABLE, patient.age, patient.sex);
+      if (v < min)
+        return { label: `Abaixo da média da faixa etária (${min} a ${max} cm)`, tone: "mid" };
+      return { label: `Dentro da média da faixa etária (${min} a ${max} cm)`, tone: "good" };
+    },
+  },
+  sft_back_scratch: {
+    category: "sft",
+    name: "Alcançar Atrás das Costas — SFT",
+    unit: "cm",
+    input: "manual",
+    protocol:
+      "Teste do Senior Fitness Test (Rikli & Jones). Em pé, uma mão por cima do ombro descendo pelas costas, a outra por baixo subindo pelas costas. Meça a distância entre os dedos médios (negativo se não se tocarem, positivo se sobrepuserem).",
+    classify: (v, patient) => {
+      const { min, max } = sftBand(BACK_SCRATCH_TABLE, patient.age, patient.sex);
+      if (v < min)
+        return { label: `Abaixo da média da faixa etária (${min} a ${max} cm)`, tone: "mid" };
+      return { label: `Dentro da média da faixa etária (${min} a ${max} cm)`, tone: "good" };
+    },
+  },
+  sft_8ft_upgo: {
+    category: "sft",
+    name: "Levantar e Caminhar 2,44m — SFT",
+    unit: "s",
+    input: "timer",
+    protocol:
+      "Teste do Senior Fitness Test (Rikli & Jones). Sentado(a) em uma cadeira, ao sinal, levante-se, caminhe 2,44 m (8 pés), contorne um cone, retorne e sente-se novamente. Cronometre o tempo total.",
+    classify: (v, patient) => {
+      const { min, max } = sftBand(UPGO_TABLE, patient.age, patient.sex);
+      if (v > max)
+        return { label: `Abaixo da média da faixa etária (${min}–${max}s)`, tone: "mid" };
+      return { label: `Dentro da média da faixa etária (${min}–${max}s)`, tone: "good" };
     },
   },
   mobility_tug: {
@@ -2574,6 +2782,7 @@ function Styles() {
         --slate: #6C9BD8;
         --brick: #F2665A;
         --sage: #8FBF6F;
+        --indigo: #8C9EFF;
         --line: #333333;
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.35);
         --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.4);
